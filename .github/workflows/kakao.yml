@@ -6,8 +6,7 @@ on:
       - cron: '37 17 * * *' # 02:17 KST
       - cron: '37 5 * * *'  # 14:17 KST
 concurrency:
-  group: ${{ github.repository }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}
 jobs:
   cron:
     runs-on: ubuntu-22.04
