@@ -1,0 +1,39 @@
+name: kakao
+
+on: 
+  workflow_dispatch:
+  schedule:
+      - cron: '37 17 * * *' # 02:17 KST
+      - cron: '37 5 * * *'  # 14:17 KST
+concurrency:
+  group: ${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  cron:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Fetch latest main branch
+        run: |
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@master
+        with:
+          node-version: 22.x
+
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Write .env
+        run: |
+          printf '%s\n' \
+            "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" \
+            "SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}" > .env
+
+      - name: get kakao
+        run: npm run kakao -- --최신
