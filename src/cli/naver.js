@@ -8,10 +8,14 @@ import {
 } from "../lib/platform-cli.js";
 import {
   getPlatformLatestSerializedAt,
-  listOngoingSourceIds,
+  listPlatformSourceIds,
+  listWebnovelHistoryRows,
+  listOngoingSourceRows,
+  upsertWebnovelHistory,
   updateWebnovelStatus
 } from "../lib/supabase.js";
 import { syncDetailItems } from "../lib/detail-sync.js";
+import { createWebnovelHistoryRow } from "../lib/webnovel-history.js";
 import { filterStoppedDetail } from "../lib/stopped-detail.js";
 import { createNaverWebnovelRow } from "../lib/webnovels.js";
 
@@ -80,8 +84,15 @@ async function syncNaverGenre({ genre, maxPages, existingIds }) {
 }
 
 async function syncNaverOngoing() {
-  console.error("[naver] loading ongoing ids from db");
-  const sourceIds = await listOngoingSourceIds("N");
+  console.error("[naver] loading ongoing rows from db");
+  const sourceRows = await listOngoingSourceRows("N");
+  const sourceIds = sourceRows.map((row) => String(row.source_id));
+  const previousRowsById = new Map(sourceRows.map((row) => [String(row.source_id), row]));
+  const historyDate = new Date().toISOString().slice(0, 10);
+  console.error(`[naver] loading webnovel history rows date=${historyDate}`);
+  const historyRowsById = new Map(
+    (await listWebnovelHistoryRows("N", historyDate)).map((row) => [String(row.source_id), row])
+  );
   console.error(`[naver] ongoing ids total=${sourceIds.length}`);
   const synced = await syncDetailItems({
     platform: "N",
@@ -90,8 +101,38 @@ async function syncNaverOngoing() {
     items: sourceIds,
     label: "ongoing",
     getSourceId: (sourceId) => sourceId,
+    getPreviousRow: (sourceId) => previousRowsById.get(String(sourceId)) ?? null,
     fetchDetail: (sourceId) => fetchSyncableNaverDetail(sourceId),
-    createRow: createNaverWebnovelRow
+    createRow: createNaverWebnovelRow,
+    afterUpsert: async ({ previousRow, row, sourceId }) => {
+      const historyRow = createWebnovelHistoryRow({
+        previousRow,
+        row
+      });
+
+      if (historyRow == null) {
+        return;
+      }
+
+      const existingHistoryRow = historyRowsById.get(String(sourceId)) ?? null;
+      let nextHistoryRow = historyRow;
+
+      if (existingHistoryRow != null) {
+        existingHistoryRow.view_delta =
+          Number(existingHistoryRow.view_delta ?? 0) + historyRow.view_delta;
+        existingHistoryRow.comment_delta =
+          Number(existingHistoryRow.comment_delta ?? 0) + historyRow.comment_delta;
+        nextHistoryRow = existingHistoryRow;
+      } else {
+        historyRowsById.set(String(sourceId), historyRow);
+      }
+
+      await upsertWebnovelHistory(nextHistoryRow);
+
+      console.error(
+        `[naver] ongoing delta productNo=${sourceId} view=${historyRow.view_delta} comment=${historyRow.comment_delta}`
+      );
+    }
   });
 
   return {
@@ -106,7 +147,6 @@ async function syncLatestNaver({ maxPages } = {}) {
   const dbCutoffDate = await getPlatformLatestSerializedAt("N");
   const cutoffDate = shiftDateByDays(dbCutoffDate, -1);
   const resolvedMaxPages = maxPages;
-  const existingIds = await loadExistingNaverIds();
   console.error(
     `[naver] latest collecting ids dbCutoffDate=${dbCutoffDate ?? "none"} cutoffDate=${cutoffDate ?? "none"} maxPages=${resolvedMaxPages ?? "all"}`
   );
@@ -118,6 +158,11 @@ async function syncLatestNaver({ maxPages } = {}) {
     }
   });
   console.error(`[naver] latest collected ids total=${items.length}`);
+  console.error("[naver] latest loading non-complete ids from db");
+  const existingIds = await listPlatformSourceIds("N", {
+    excludeStatuses: ["완결"]
+  });
+  console.error(`[naver] latest non-complete ids total=${existingIds.size}`);
   const totalSynced = await syncNaverItems({
     items,
     existingIds,

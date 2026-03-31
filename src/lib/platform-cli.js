@@ -69,7 +69,7 @@ export async function loadExistingPlatformIds(platform, logPrefix) {
   return existingIds;
 }
 
-export function parsePlatformCliArgs({ argv, genres, scriptPath, platformName }) {
+function parsePlatformCliArgs({ argv, genres, scriptPath, platformName }) {
   const { positionals, options } = parseCommandArguments(argv);
   const maxPages = parseOptionalNumber(positionals[0], "maxPages");
   const selectedGenres = getSelectedGenres(options, genres);

@@ -13,6 +13,8 @@ export async function syncDetailItems({
   fetchDetail,
   createRow,
   knownIds,
+  getPreviousRow,
+  afterUpsert,
   delayMs = 0
 }) {
   let synced = 0;
@@ -24,6 +26,7 @@ export async function syncDetailItems({
       const detail = await fetchDetail(item);
       if (detail != null) {
         const row = createRow(detail);
+        const previousRow = getPreviousRow?.(sourceId) ?? null;
         const missingFields = findNullRequiredFields(row);
 
         if (missingFields.length > 0) {
@@ -41,6 +44,11 @@ export async function syncDetailItems({
         }
 
         await upsertWebnovels([row]);
+        await afterUpsert?.({
+          sourceId,
+          row,
+          previousRow
+        });
         knownIds?.add(String(row.source_id));
         synced += 1;
       }

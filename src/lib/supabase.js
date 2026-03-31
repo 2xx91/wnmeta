@@ -1,5 +1,6 @@
 const UPSERT_BATCH_SIZE = 50;
 const SOURCE_IDS_PAGE_SIZE = 1000;
+
 function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -61,9 +62,102 @@ export async function upsertWebnovels(rows, { batchSize = UPSERT_BATCH_SIZE } = 
   return upsertedCount;
 }
 
+function toPostgrestInFilterValue(values) {
+  const items = values.map((value) => {
+    const escaped = String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  });
+
+  return `(${items.join(",")})`;
+}
+
+export async function listWebnovelHistoryRows(
+  platform,
+  historyDate,
+  { pageSize = SOURCE_IDS_PAGE_SIZE } = {}
+) {
+  const { url, key } = getSupabaseConfig();
+  const allRows = [];
+  let offset = 0;
+
+  while (true) {
+    const endpoint = new URL("/rest/v1/webnovel_history", url);
+    endpoint.searchParams.set(
+      "select",
+      "platform,source_id,history_date,view_delta,comment_delta"
+    );
+    endpoint.searchParams.set("platform", `eq.${platform}`);
+    endpoint.searchParams.set("history_date", `eq.${historyDate}`);
+    endpoint.searchParams.set("order", "source_id.asc");
+    endpoint.searchParams.set("limit", String(pageSize));
+    endpoint.searchParams.set("offset", String(offset));
+
+    const response = await fetch(endpoint, {
+      headers: {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+        accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Supabase webnovel-history lookup failed: ${response.status} ${response.statusText} ${body}`
+      );
+    }
+
+    const rows = await response.json();
+    allRows.push(...rows);
+
+    if (rows.length < pageSize) {
+      break;
+    }
+
+    offset += pageSize;
+  }
+
+  return allRows;
+}
+
+export async function upsertWebnovelHistory(row) {
+  if (row == null) {
+    return 0;
+  }
+
+  const { url, key } = getSupabaseConfig();
+  const endpoint = new URL("/rest/v1/webnovel_history", url);
+  endpoint.searchParams.set("on_conflict", "platform,source_id,history_date");
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+      prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify([row])
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Supabase webnovel-history upsert failed: ${response.status} ${response.statusText} ${body}`
+    );
+  }
+
+  return 1;
+}
+
 async function listRows(
   platform,
-  { status, excludeStatuses, fields = ["source_id"], pageSize = SOURCE_IDS_PAGE_SIZE } = {}
+  {
+    status,
+    excludeStatuses,
+    fields = ["source_id"],
+    pageSize = SOURCE_IDS_PAGE_SIZE
+  } = {}
 ) {
   const { url, key } = getSupabaseConfig();
   const allRows = [];
@@ -80,7 +174,7 @@ async function listRows(
     if (status != null) {
       endpoint.searchParams.set("status", `eq.${status}`);
     } else if (Array.isArray(excludeStatuses) && excludeStatuses.length > 0) {
-      endpoint.searchParams.set("status", `not.in.(${excludeStatuses.join(",")})`);
+      endpoint.searchParams.set("status", `not.in.${toPostgrestInFilterValue(excludeStatuses)}`);
     }
 
     const response = await fetch(endpoint, {
@@ -136,20 +230,11 @@ export async function listPlatformSourceIds(platform, options = {}) {
   return listSourceIds(platform, options);
 }
 
-export async function listOngoingSourceIds(platform) {
-  const rows = await listRows(platform, {
-    fields: ["source_id", "status"]
-  });
-  return rows
-    .filter((row) => row?.status !== "완결")
-    .map((row) => String(row.source_id));
-}
-
 export async function listOngoingSourceRows(platform) {
-  const rows = await listRows(platform, {
-    fields: ["source_id", "publisher", "status"]
+  return listRows(platform, {
+    excludeStatuses: ["완결"],
+    fields: ["source_id", "publisher", "view_count", "comment_count"]
   });
-  return rows.filter((row) => row?.status !== "완결");
 }
 
 export async function updateWebnovelStatus(platform, sourceId, status) {

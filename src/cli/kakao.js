@@ -13,9 +13,13 @@ import {
 } from "../lib/platform-cli.js";
 import {
   getPlatformLatestSerializedAt,
-  listOngoingSourceRows
+  listPlatformSourceIds,
+  listWebnovelHistoryRows,
+  listOngoingSourceRows,
+  upsertWebnovelHistory
 } from "../lib/supabase.js";
 import { syncDetailItems } from "../lib/detail-sync.js";
+import { createWebnovelHistoryRow } from "../lib/webnovel-history.js";
 import { createKakaoWebnovelRow } from "../lib/webnovels.js";
 
 const DETAIL_DELAY_MS = 500;
@@ -80,6 +84,12 @@ async function syncKakaoOngoing() {
   console.error("[kakao] loading ongoing rows from db");
   const sourceRows = await listOngoingSourceRows("K");
   const sourceIds = sourceRows.map((row) => String(row.source_id));
+  const previousRowsById = new Map(sourceRows.map((row) => [String(row.source_id), row]));
+  const historyDate = new Date().toISOString().slice(0, 10);
+  console.error(`[kakao] loading webnovel history rows date=${historyDate}`);
+  const historyRowsById = new Map(
+    (await listWebnovelHistoryRows("K", historyDate)).map((row) => [String(row.source_id), row])
+  );
   const publisherById = new Map(
     sourceRows.map((row) => [String(row.source_id), row.publisher ?? null])
   );
@@ -92,6 +102,7 @@ async function syncKakaoOngoing() {
     items: sourceIds,
     label: "ongoing",
     getSourceId: (sourceId) => sourceId,
+    getPreviousRow: (sourceId) => previousRowsById.get(String(sourceId)) ?? null,
     fetchDetail: async (sourceId) => {
       const existingPublisher = publisherById.get(String(sourceId)) ?? null;
       const detail = await fetchKakaoSeriesDetail(Number(sourceId), {
@@ -106,6 +117,35 @@ async function syncKakaoOngoing() {
       return detail;
     },
     createRow: createKakaoWebnovelRow,
+    afterUpsert: async ({ previousRow, row, sourceId }) => {
+      const historyRow = createWebnovelHistoryRow({
+        previousRow,
+        row
+      });
+
+      if (historyRow == null) {
+        return;
+      }
+
+      const existingHistoryRow = historyRowsById.get(String(sourceId)) ?? null;
+      let nextHistoryRow = historyRow;
+
+      if (existingHistoryRow != null) {
+        existingHistoryRow.view_delta =
+          Number(existingHistoryRow.view_delta ?? 0) + historyRow.view_delta;
+        existingHistoryRow.comment_delta =
+          Number(existingHistoryRow.comment_delta ?? 0) + historyRow.comment_delta;
+        nextHistoryRow = existingHistoryRow;
+      } else {
+        historyRowsById.set(String(sourceId), historyRow);
+      }
+
+      await upsertWebnovelHistory(nextHistoryRow);
+
+      console.error(
+        `[kakao] ongoing delta seriesId=${sourceId} view=${historyRow.view_delta} comment=${historyRow.comment_delta}`
+      );
+    },
     delayMs: DETAIL_DELAY_MS
   });
 
@@ -121,7 +161,6 @@ async function syncLatestKakao({ maxPages } = {}) {
   const dbCutoffDate = await getPlatformLatestSerializedAt("K");
   const cutoffDate = shiftDateByDays(dbCutoffDate, -1);
   const resolvedMaxPages = maxPages;
-  const existingIds = await loadExistingKakaoIds();
   console.error(
     `[kakao] latest collecting ids dbCutoffDate=${dbCutoffDate ?? "none"} cutoffDate=${cutoffDate ?? "none"} maxPages=${resolvedMaxPages ?? "all"}`
   );
@@ -134,6 +173,11 @@ async function syncLatestKakao({ maxPages } = {}) {
     }
   });
   console.error(`[kakao] latest collected ids total=${items.length}`);
+  console.error("[kakao] latest loading non-complete ids from db");
+  const existingIds = await listPlatformSourceIds("K", {
+    excludeStatuses: ["완결"]
+  });
+  console.error(`[kakao] latest non-complete ids total=${existingIds.size}`);
   const totalSynced = await syncKakaoItems({
     items,
     cookieHeader,
