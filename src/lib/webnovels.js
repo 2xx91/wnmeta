@@ -16,7 +16,7 @@ function toDateOnly(value) {
   return match?.[0] ?? null;
 }
 
-const OPTIONAL_WEBNOVEL_FIELDS = new Set(["view_count", "synopsis", "comment_count"]);
+const OPTIONAL_WEBNOVEL_FIELDS = new Set(["view_count", "rating", "synopsis", "comment_count"]);
 
 function toNonNegativeCount(value) {
   if (value == null) {
@@ -26,6 +26,19 @@ function toNonNegativeCount(value) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue) || numericValue < 0) {
     return 0;
+  }
+
+  return numericValue;
+}
+
+function toNullableRating(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return null;
   }
 
   return numericValue;
@@ -46,6 +59,7 @@ function createWebnovelRow({ platform, detail, genre }) {
     publisher: toNullableText(detail.publisher),
     genre: toNullableText(genre),
     view_count: toNonNegativeCount(detail.viewCount),
+    rating: toNullableRating(detail.rating),
     status: toNullableText(detail.status),
     first_serialized_at: toDateOnly(detail.firstSerializedAt),
     last_serialized_at: toDateOnly(detail.lastSerializedAt),

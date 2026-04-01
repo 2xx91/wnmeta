@@ -4,6 +4,7 @@ create table if not exists public.webnovel_history (
   source_id text not null,
   history_date date not null default current_date,
   view_count bigint not null,
+  rating numeric,
   comment_count integer not null,
   constraint webnovel_history_platform_source_history_date_key
     unique (platform, source_id, history_date),

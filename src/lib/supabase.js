@@ -210,31 +210,3 @@ export async function updateWebnovelStatus(platform, sourceId, status) {
     throw new Error(`Supabase status update failed: ${response.status} ${response.statusText} ${body}`);
   }
 }
-
-export async function getPlatformLatestSerializedAt(platform) {
-  const { url, key } = getSupabaseConfig();
-  const endpoint = new URL("/rest/v1/webnovels", url);
-  endpoint.searchParams.set("select", "last_serialized_at");
-  endpoint.searchParams.set("platform", `eq.${platform}`);
-  endpoint.searchParams.set("last_serialized_at", "not.is.null");
-  endpoint.searchParams.set("order", "last_serialized_at.desc");
-  endpoint.searchParams.set("limit", "1");
-
-  const response = await fetch(endpoint, {
-    headers: {
-      apikey: key,
-      authorization: `Bearer ${key}`,
-      accept: "application/json"
-    }
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Supabase latest-date lookup failed: ${response.status} ${response.statusText} ${body}`
-    );
-  }
-
-  const rows = await response.json();
-  return rows[0]?.last_serialized_at ?? null;
-}

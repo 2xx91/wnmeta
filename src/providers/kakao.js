@@ -95,6 +95,21 @@ function buildKakaoCoverUrl(thumbnail) {
   return url.toString();
 }
 
+function parseKakaoRating(serviceProperty) {
+  const ratingCount = Number(serviceProperty?.rating_count ?? serviceProperty?.ratingCount);
+  const ratingSum = Number(serviceProperty?.rating_sum ?? serviceProperty?.ratingSum);
+
+  if (!Number.isFinite(ratingCount) || ratingCount <= 0) {
+    return null;
+  }
+
+  if (!Number.isFinite(ratingSum) || ratingSum < 0) {
+    return null;
+  }
+
+  return Math.round((ratingSum / ratingCount) * 10) / 10;
+}
+
 function toDateOnly(value) {
   const match = String(value ?? "").match(/\d{4}-\d{2}-\d{2}/);
   return match?.[0] ?? null;
@@ -134,7 +149,7 @@ function normalizeKakaoStatus(content) {
   return null;
 }
 
-export async function fetchKakaoGenrePage({
+async function fetchKakaoGenrePage({
   page = 0,
   sortType = "PRODUCT_LATEST",
   isComplete = false,
@@ -249,14 +264,16 @@ export async function fetchKakaoSeriesDetail(
 
   const referer = `https://page.kakao.com/content/${seriesId}?tab_type=product`;
   const detailHeaders = buildKakaoHeaders({ referer, cookieHeader: sessionCookie });
-  const overviewPayload = await fetchJson(overviewUrl, {
-    headers: detailHeaders
-  });
-  const aboutPayload = includePublisher
-    ? await fetchJson(aboutUrl, {
-        headers: detailHeaders
-      })
-    : null;
+  const [overviewPayload, aboutPayload] = await Promise.all([
+    fetchJson(overviewUrl, {
+      headers: detailHeaders
+    }),
+    includePublisher
+      ? fetchJson(aboutUrl, {
+          headers: detailHeaders
+        })
+      : Promise.resolve(null)
+  ]);
 
   const content = overviewPayload?.result?.content;
   const about = aboutPayload?.result ?? null;
@@ -271,6 +288,7 @@ export async function fetchKakaoSeriesDetail(
   const lastSerializedAt = content.last_slide_added_dt ?? content.lastSlideAddedDate ?? null;
   const publisher = about?.detail?.publisher_name ?? null;
   const coverUrl = buildKakaoCoverUrl(content.thumbnail);
+  const rating = parseKakaoRating(serviceProperty);
 
   return {
     source: "kakao",
@@ -283,6 +301,7 @@ export async function fetchKakaoSeriesDetail(
       subCategory
     },
     viewCount: serviceProperty.view_count ?? serviceProperty.viewCount ?? null,
+    rating,
     status: normalizeKakaoStatus(content),
     firstSerializedAt,
     lastSerializedAt,

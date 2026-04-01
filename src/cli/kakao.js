@@ -7,12 +7,12 @@ import {
   fetchKakaoSeriesDetail
 } from "../providers/kakao.js";
 import {
+  getKstDateOnly,
   loadExistingPlatformIds,
   runPlatformCli,
   shiftDateByDays
 } from "../lib/platform-cli.js";
 import {
-  getPlatformLatestSerializedAt,
   listPlatformSourceIds,
   listOngoingSourceRows,
   upsertWebnovelHistory
@@ -121,7 +121,7 @@ async function syncKakaoOngoing() {
       await upsertWebnovelHistory(historyRow);
 
       console.error(
-        `[kakao] ongoing history seriesId=${sourceId} view=${historyRow.view_count} comment=${historyRow.comment_count}`
+        `[kakao] ongoing history seriesId=${sourceId} view=${historyRow.view_count} rating=${historyRow.rating ?? "null"} comment=${historyRow.comment_count}`
       );
     },
     delayMs: DETAIL_DELAY_MS
@@ -136,11 +136,12 @@ async function syncKakaoOngoing() {
 }
 
 async function syncLatestKakao({ maxPages } = {}) {
-  const dbCutoffDate = await getPlatformLatestSerializedAt("K");
-  const cutoffDate = shiftDateByDays(dbCutoffDate, -1);
+  const ongoingResult = await syncKakaoOngoing();
+  const runDate = getKstDateOnly();
+  const cutoffDate = shiftDateByDays(runDate, -1);
   const resolvedMaxPages = maxPages;
   console.error(
-    `[kakao] latest collecting ids dbCutoffDate=${dbCutoffDate ?? "none"} cutoffDate=${cutoffDate ?? "none"} maxPages=${resolvedMaxPages ?? "all"}`
+    `[kakao] latest collecting ids runDate=${runDate} cutoffDate=${cutoffDate ?? "none"} maxPages=${resolvedMaxPages ?? "all"}`
   );
   const { items, cookieHeader } = await collectKakaoSeriesIds({
     sortType: "UPDATE",
@@ -162,13 +163,12 @@ async function syncLatestKakao({ maxPages } = {}) {
     existingIds,
     label: "latest"
   });
-  const ongoingResult = await syncKakaoOngoing();
 
   return {
     platform: "K",
     mode: "latest",
+    runDate,
     cutoffDate,
-    dbCutoffDate,
     maxPages: resolvedMaxPages ?? null,
     total: items.length,
     synced: totalSynced,

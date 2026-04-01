@@ -13,5 +13,6 @@ create table if not exists public.webnovels (
   synopsis text,
   comment_count integer,
   cover_url text,
+  rating numeric,
   constraint webnovels_pkey primary key (platform, source_id)
 );

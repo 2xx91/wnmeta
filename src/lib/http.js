@@ -85,5 +85,4 @@ export async function fetchJson(url, options = {}) {
     throw new Error(`Invalid JSON response (${url}) ${snippet}`);
   }
 }
-
-export { DEFAULT_USER_AGENT, sleep };
+export { sleep };

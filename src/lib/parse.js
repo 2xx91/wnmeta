@@ -22,15 +22,20 @@ export function parseKoreanCount(rawValue) {
   return Math.round(numericPart * units[unit]);
 }
 
+export function parseDecimalNumber(rawValue) {
+  if (rawValue == null) return null;
+
+  const text = String(rawValue).trim().replace(/,/g, "");
+  if (!text) return null;
+
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+
+  const numberValue = Number(match[0]);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
 export function normalizeWhitespace(value) {
   if (value == null) return "";
   return String(value).replace(/\s+/g, " ").trim();
-}
-
-export function decodeHtmlText(value) {
-  return normalizeWhitespace(
-    String(value ?? "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/<br\s*\/?>/gi, "\n")
-  );
 }

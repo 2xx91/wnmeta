@@ -2,12 +2,12 @@
 
 import { NAVER_GENRES, collectNaverProductIds, fetchNaverSeriesDetail } from "../providers/naver.js";
 import {
+  getKstDateOnly,
   loadExistingPlatformIds,
   runPlatformCli,
   shiftDateByDays
 } from "../lib/platform-cli.js";
 import {
-  getPlatformLatestSerializedAt,
   listPlatformSourceIds,
   listOngoingSourceRows,
   upsertWebnovelHistory,
@@ -108,7 +108,7 @@ async function syncNaverOngoing() {
       await upsertWebnovelHistory(historyRow);
 
       console.error(
-        `[naver] ongoing history productNo=${sourceId} view=${historyRow.view_count} comment=${historyRow.comment_count}`
+        `[naver] ongoing history productNo=${sourceId} view=${historyRow.view_count} rating=${historyRow.rating ?? "null"} comment=${historyRow.comment_count}`
       );
     }
   });
@@ -122,11 +122,12 @@ async function syncNaverOngoing() {
 }
 
 async function syncLatestNaver({ maxPages } = {}) {
-  const dbCutoffDate = await getPlatformLatestSerializedAt("N");
-  const cutoffDate = shiftDateByDays(dbCutoffDate, -1);
+  const ongoingResult = await syncNaverOngoing();
+  const runDate = getKstDateOnly();
+  const cutoffDate = shiftDateByDays(runDate, -1);
   const resolvedMaxPages = maxPages;
   console.error(
-    `[naver] latest collecting ids dbCutoffDate=${dbCutoffDate ?? "none"} cutoffDate=${cutoffDate ?? "none"} maxPages=${resolvedMaxPages ?? "all"}`
+    `[naver] latest collecting ids runDate=${runDate} cutoffDate=${cutoffDate ?? "none"} maxPages=${resolvedMaxPages ?? "all"}`
   );
   const { items } = await collectNaverProductIds({
     maxPages: resolvedMaxPages,
@@ -146,13 +147,12 @@ async function syncLatestNaver({ maxPages } = {}) {
     existingIds,
     label: "latest"
   });
-  const ongoingResult = await syncNaverOngoing();
 
   return {
     platform: "N",
     mode: "latest",
+    runDate,
     cutoffDate,
-    dbCutoffDate,
     maxPages: resolvedMaxPages ?? null,
     total: items.length,
     synced: totalSynced,

@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 
 import { fetchJson, fetchText } from "../lib/http.js";
-import { normalizeWhitespace, parseKoreanCount } from "../lib/parse.js";
+import { normalizeWhitespace, parseDecimalNumber, parseKoreanCount } from "../lib/parse.js";
 
 const CATEGORY_URL = "https://series.naver.com/novel/categoryProductList.series";
 const DETAIL_URL = "https://series.naver.com/novel/detail.series";
@@ -215,6 +215,12 @@ function parseNaverDetailHtml(html) {
   const viewCount = parseKoreanCount($(".user_action_area .btn_download span").first().text());
   const parsedCommentCount = parseKoreanCount($("#commentCount").first().text());
   const commentCount = parsedCommentCount == null ? null : Math.max(0, parsedCommentCount);
+  const rating = parseDecimalNumber(
+    $(".end_head .score_num").first().text() ||
+      $(".end_head .score_area").first().text() ||
+      $("#content").text().match(/평점\s*([0-9]+(?:\.[0-9]+)?)/)?.[1] ||
+      null
+  );
   const synopsis = normalizeWhitespace($("._synopsis").first().text());
   const totalEpisode = Number(normalizeWhitespace($(".end_total_episode strong").first().text()));
   const coverUrl =
@@ -229,6 +235,7 @@ function parseNaverDetailHtml(html) {
     author,
     publisher,
     viewCount,
+    rating,
     commentCount,
     synopsis,
     totalEpisode,
@@ -282,6 +289,7 @@ export async function fetchNaverSeriesDetail(productNo) {
     publisher: detail.publisher || null,
     genre: detail.genre,
     viewCount: detail.viewCount,
+    rating: detail.rating,
     status: normalizeNaverStatus(detail.status),
     firstSerializedAt: earliest.boundaryDate,
     lastSerializedAt: latest.boundaryDate,
