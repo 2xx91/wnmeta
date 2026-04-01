@@ -14,7 +14,6 @@ import {
 import {
   getPlatformLatestSerializedAt,
   listPlatformSourceIds,
-  listWebnovelHistoryRows,
   listOngoingSourceRows,
   upsertWebnovelHistory
 } from "../lib/supabase.js";
@@ -84,12 +83,6 @@ async function syncKakaoOngoing() {
   console.error("[kakao] loading ongoing rows from db");
   const sourceRows = await listOngoingSourceRows("K");
   const sourceIds = sourceRows.map((row) => String(row.source_id));
-  const previousRowsById = new Map(sourceRows.map((row) => [String(row.source_id), row]));
-  const historyDate = new Date().toISOString().slice(0, 10);
-  console.error(`[kakao] loading webnovel history rows date=${historyDate}`);
-  const historyRowsById = new Map(
-    (await listWebnovelHistoryRows("K", historyDate)).map((row) => [String(row.source_id), row])
-  );
   const publisherById = new Map(
     sourceRows.map((row) => [String(row.source_id), row.publisher ?? null])
   );
@@ -102,7 +95,6 @@ async function syncKakaoOngoing() {
     items: sourceIds,
     label: "ongoing",
     getSourceId: (sourceId) => sourceId,
-    getPreviousRow: (sourceId) => previousRowsById.get(String(sourceId)) ?? null,
     fetchDetail: async (sourceId) => {
       const existingPublisher = publisherById.get(String(sourceId)) ?? null;
       const detail = await fetchKakaoSeriesDetail(Number(sourceId), {
@@ -117,9 +109,8 @@ async function syncKakaoOngoing() {
       return detail;
     },
     createRow: createKakaoWebnovelRow,
-    afterUpsert: async ({ previousRow, row, sourceId }) => {
+    afterUpsert: async ({ row, sourceId }) => {
       const historyRow = createWebnovelHistoryRow({
-        previousRow,
         row
       });
 
@@ -127,23 +118,10 @@ async function syncKakaoOngoing() {
         return;
       }
 
-      const existingHistoryRow = historyRowsById.get(String(sourceId)) ?? null;
-      let nextHistoryRow = historyRow;
-
-      if (existingHistoryRow != null) {
-        existingHistoryRow.view_delta =
-          Number(existingHistoryRow.view_delta ?? 0) + historyRow.view_delta;
-        existingHistoryRow.comment_delta =
-          Number(existingHistoryRow.comment_delta ?? 0) + historyRow.comment_delta;
-        nextHistoryRow = existingHistoryRow;
-      } else {
-        historyRowsById.set(String(sourceId), historyRow);
-      }
-
-      await upsertWebnovelHistory(nextHistoryRow);
+      await upsertWebnovelHistory(historyRow);
 
       console.error(
-        `[kakao] ongoing delta seriesId=${sourceId} view=${historyRow.view_delta} comment=${historyRow.comment_delta}`
+        `[kakao] ongoing history seriesId=${sourceId} view=${historyRow.view_count} comment=${historyRow.comment_count}`
       );
     },
     delayMs: DETAIL_DELAY_MS

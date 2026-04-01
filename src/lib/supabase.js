@@ -71,55 +71,6 @@ function toPostgrestInFilterValue(values) {
   return `(${items.join(",")})`;
 }
 
-export async function listWebnovelHistoryRows(
-  platform,
-  historyDate,
-  { pageSize = SOURCE_IDS_PAGE_SIZE } = {}
-) {
-  const { url, key } = getSupabaseConfig();
-  const allRows = [];
-  let offset = 0;
-
-  while (true) {
-    const endpoint = new URL("/rest/v1/webnovel_history", url);
-    endpoint.searchParams.set(
-      "select",
-      "platform,source_id,history_date,view_delta,comment_delta"
-    );
-    endpoint.searchParams.set("platform", `eq.${platform}`);
-    endpoint.searchParams.set("history_date", `eq.${historyDate}`);
-    endpoint.searchParams.set("order", "source_id.asc");
-    endpoint.searchParams.set("limit", String(pageSize));
-    endpoint.searchParams.set("offset", String(offset));
-
-    const response = await fetch(endpoint, {
-      headers: {
-        apikey: key,
-        authorization: `Bearer ${key}`,
-        accept: "application/json"
-      }
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `Supabase webnovel-history lookup failed: ${response.status} ${response.statusText} ${body}`
-      );
-    }
-
-    const rows = await response.json();
-    allRows.push(...rows);
-
-    if (rows.length < pageSize) {
-      break;
-    }
-
-    offset += pageSize;
-  }
-
-  return allRows;
-}
-
 export async function upsertWebnovelHistory(row) {
   if (row == null) {
     return 0;
@@ -233,7 +184,7 @@ export async function listPlatformSourceIds(platform, options = {}) {
 export async function listOngoingSourceRows(platform) {
   return listRows(platform, {
     excludeStatuses: ["완결"],
-    fields: ["source_id", "publisher", "view_count", "comment_count"]
+    fields: ["source_id", "publisher"]
   });
 }
 

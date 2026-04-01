@@ -9,7 +9,6 @@ import {
 import {
   getPlatformLatestSerializedAt,
   listPlatformSourceIds,
-  listWebnovelHistoryRows,
   listOngoingSourceRows,
   upsertWebnovelHistory,
   updateWebnovelStatus
@@ -87,12 +86,6 @@ async function syncNaverOngoing() {
   console.error("[naver] loading ongoing rows from db");
   const sourceRows = await listOngoingSourceRows("N");
   const sourceIds = sourceRows.map((row) => String(row.source_id));
-  const previousRowsById = new Map(sourceRows.map((row) => [String(row.source_id), row]));
-  const historyDate = new Date().toISOString().slice(0, 10);
-  console.error(`[naver] loading webnovel history rows date=${historyDate}`);
-  const historyRowsById = new Map(
-    (await listWebnovelHistoryRows("N", historyDate)).map((row) => [String(row.source_id), row])
-  );
   console.error(`[naver] ongoing ids total=${sourceIds.length}`);
   const synced = await syncDetailItems({
     platform: "N",
@@ -101,12 +94,10 @@ async function syncNaverOngoing() {
     items: sourceIds,
     label: "ongoing",
     getSourceId: (sourceId) => sourceId,
-    getPreviousRow: (sourceId) => previousRowsById.get(String(sourceId)) ?? null,
     fetchDetail: (sourceId) => fetchSyncableNaverDetail(sourceId),
     createRow: createNaverWebnovelRow,
-    afterUpsert: async ({ previousRow, row, sourceId }) => {
+    afterUpsert: async ({ row, sourceId }) => {
       const historyRow = createWebnovelHistoryRow({
-        previousRow,
         row
       });
 
@@ -114,23 +105,10 @@ async function syncNaverOngoing() {
         return;
       }
 
-      const existingHistoryRow = historyRowsById.get(String(sourceId)) ?? null;
-      let nextHistoryRow = historyRow;
-
-      if (existingHistoryRow != null) {
-        existingHistoryRow.view_delta =
-          Number(existingHistoryRow.view_delta ?? 0) + historyRow.view_delta;
-        existingHistoryRow.comment_delta =
-          Number(existingHistoryRow.comment_delta ?? 0) + historyRow.comment_delta;
-        nextHistoryRow = existingHistoryRow;
-      } else {
-        historyRowsById.set(String(sourceId), historyRow);
-      }
-
-      await upsertWebnovelHistory(nextHistoryRow);
+      await upsertWebnovelHistory(historyRow);
 
       console.error(
-        `[naver] ongoing delta productNo=${sourceId} view=${historyRow.view_delta} comment=${historyRow.comment_delta}`
+        `[naver] ongoing history productNo=${sourceId} view=${historyRow.view_count} comment=${historyRow.comment_count}`
       );
     }
   });
