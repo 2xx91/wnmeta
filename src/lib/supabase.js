@@ -188,6 +188,13 @@ export async function listOngoingSourceRows(platform) {
   });
 }
 
+export async function listCompletedSourceRows(platform) {
+  return listRows(platform, {
+    status: "완결",
+    fields: ["source_id", "publisher"]
+  });
+}
+
 export async function updateWebnovelStatus(platform, sourceId, status) {
   const { url, key } = getSupabaseConfig();
   const endpoint = new URL("/rest/v1/webnovels", url);

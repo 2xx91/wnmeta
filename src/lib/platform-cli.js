@@ -93,21 +93,26 @@ function parsePlatformCliArgs({ argv, genres, scriptPath, platformName }) {
   const maxPages = parseOptionalNumber(positionals[0], "maxPages");
   const selectedGenres = getSelectedGenres(options, genres);
   const isLatest = hasFlag(options, "최신");
+  const isCompleted = hasFlag(options, "완결");
 
-  if (isLatest && selectedGenres.length > 0) {
+  const selectedModeCount = [isLatest, isCompleted].filter(Boolean).length;
+
+  if (selectedModeCount > 1 || (selectedModeCount === 1 && selectedGenres.length > 0)) {
     throw new Error(`Use one mode flag or one ${platformName} genre flag`);
   }
 
-  if (!isLatest && selectedGenres.length !== 1) {
+  if (!isLatest && !isCompleted && selectedGenres.length !== 1) {
     console.log(`Usage:
   node ${scriptPath} --무협 [maxPages]
-  node ${scriptPath} --최신 [maxPages]`);
+  node ${scriptPath} --최신 [maxPages]
+  node ${scriptPath} --완결`);
     return null;
   }
 
   return {
     genre: selectedGenres[0] ?? null,
     isLatest,
+    isCompleted,
     maxPages
   };
 }
@@ -119,6 +124,7 @@ export async function runPlatformCli({
   scriptPath,
   genres,
   syncLatest,
+  syncCompleted,
   syncGenre,
   loadExistingIds
 }) {
@@ -137,7 +143,9 @@ export async function runPlatformCli({
 
   const result = parsed.isLatest
     ? await syncLatest({ maxPages: parsed.maxPages })
-    : await syncGenre({
+    : parsed.isCompleted
+      ? await syncCompleted()
+      : await syncGenre({
         genre: parsed.genre,
         maxPages: parsed.maxPages,
         existingIds: await loadExistingIds()

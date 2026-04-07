@@ -13,6 +13,7 @@ import {
   shiftDateByDays
 } from "../lib/platform-cli.js";
 import {
+  listCompletedSourceRows,
   listPlatformSourceIds,
   listOngoingSourceRows,
   upsertWebnovelHistory
@@ -135,6 +136,47 @@ async function syncKakaoOngoing() {
   };
 }
 
+async function syncKakaoCompleted() {
+  console.error("[kakao] loading completed rows from db");
+  const sourceRows = await listCompletedSourceRows("K");
+  const sourceIds = sourceRows.map((row) => String(row.source_id));
+  const publisherById = new Map(
+    sourceRows.map((row) => [String(row.source_id), row.publisher ?? null])
+  );
+  console.error(`[kakao] completed ids total=${sourceIds.length}`);
+  const cookieHeader = await createKakaoSessionCookie();
+  const synced = await syncDetailItems({
+    platform: "K",
+    logPrefix: "kakao",
+    sourceLabel: "seriesId",
+    items: sourceIds,
+    label: "completed",
+    getSourceId: (sourceId) => sourceId,
+    fetchDetail: async (sourceId) => {
+      const existingPublisher = publisherById.get(String(sourceId)) ?? null;
+      const detail = await fetchKakaoSeriesDetail(Number(sourceId), {
+        cookieHeader,
+        includePublisher: existingPublisher == null
+      });
+
+      if (existingPublisher != null && detail.publisher == null) {
+        detail.publisher = existingPublisher;
+      }
+
+      return detail;
+    },
+    createRow: createKakaoWebnovelRow,
+    delayMs: DETAIL_DELAY_MS
+  });
+
+  return {
+    platform: "K",
+    mode: "completed",
+    total: sourceIds.length,
+    synced
+  };
+}
+
 async function syncLatestKakao({ maxPages } = {}) {
   const ongoingResult = await syncKakaoOngoing();
   const runDate = getKstDateOnly();
@@ -185,6 +227,7 @@ async function main() {
     scriptPath: "src/cli/kakao.js",
     genres: KAKAO_GENRES,
     syncLatest: syncLatestKakao,
+    syncCompleted: syncKakaoCompleted,
     syncGenre: syncKakaoGenre,
     loadExistingIds: loadExistingKakaoIds
   });

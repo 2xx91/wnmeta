@@ -8,6 +8,7 @@ import {
   shiftDateByDays
 } from "../lib/platform-cli.js";
 import {
+  listCompletedSourceRows,
   listPlatformSourceIds,
   listOngoingSourceRows,
   upsertWebnovelHistory,
@@ -121,6 +122,30 @@ async function syncNaverOngoing() {
   };
 }
 
+async function syncNaverCompleted() {
+  console.error("[naver] loading completed rows from db");
+  const sourceRows = await listCompletedSourceRows("N");
+  const sourceIds = sourceRows.map((row) => String(row.source_id));
+  console.error(`[naver] completed ids total=${sourceIds.length}`);
+  const synced = await syncDetailItems({
+    platform: "N",
+    logPrefix: "naver",
+    sourceLabel: "productNo",
+    items: sourceIds,
+    label: "completed",
+    getSourceId: (sourceId) => sourceId,
+    fetchDetail: (sourceId) => fetchSyncableNaverDetail(sourceId),
+    createRow: createNaverWebnovelRow
+  });
+
+  return {
+    platform: "N",
+    mode: "completed",
+    total: sourceIds.length,
+    synced
+  };
+}
+
 async function syncLatestNaver({ maxPages } = {}) {
   const ongoingResult = await syncNaverOngoing();
   const runDate = getKstDateOnly();
@@ -169,6 +194,7 @@ async function main() {
     scriptPath: "src/cli/naver.js",
     genres: NAVER_GENRES,
     syncLatest: syncLatestNaver,
+    syncCompleted: syncNaverCompleted,
     syncGenre: syncNaverGenre,
     loadExistingIds: loadExistingNaverIds
   });
