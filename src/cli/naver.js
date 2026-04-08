@@ -19,13 +19,20 @@ import { createWebnovelHistoryRow } from "../lib/webnovel-history.js";
 import { filterStoppedDetail } from "../lib/stopped-detail.js";
 import { createNaverWebnovelRow } from "../lib/webnovels.js";
 
+const IGNORED_NAVER_GENRES = new Set(["미스터리", "라이트노벨"]);
+
 function isStoppedNaverDetail(detail) {
   return detail?.status === "중단";
 }
 
+function shouldIgnoreNaverDetail(detail) {
+  const genre = String(detail?.genre ?? "").trim();
+  return IGNORED_NAVER_GENRES.has(genre);
+}
+
 async function fetchSyncableNaverDetail(sourceId) {
   const detail = await fetchNaverSeriesDetail(Number(sourceId));
-  return filterStoppedDetail({
+  const syncableDetail = await filterStoppedDetail({
     detail,
     isStoppedDetail: isStoppedNaverDetail,
     updateStatus: updateWebnovelStatus,
@@ -34,6 +41,17 @@ async function fetchSyncableNaverDetail(sourceId) {
     logPrefix: "naver",
     sourceLabel: "productNo"
   });
+
+  if (syncableDetail == null) {
+    return null;
+  }
+
+  if (shouldIgnoreNaverDetail(syncableDetail)) {
+    console.error(`[naver] skipped ignored genre productNo=${sourceId} genre=${syncableDetail.genre}`);
+    return null;
+  }
+
+  return syncableDetail;
 }
 
 async function loadExistingNaverIds() {
